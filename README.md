@@ -64,10 +64,14 @@ You only need to do this if you wish to have Facebook logon support. You may als
 6. copy-paste your VAPID keys into your settings.json file;
 
 #### 6. Run the app
-You should now be able to run the app locally:
+You should now be able to run the app locally (not full offline support does not work, see below):
 ```
 meteor --settings settings.json
 ```
+
+#### 7. (Optional) Full offline support
+1. In Chrome on the Network tab, make sure you have UNCHECKED "Disable cache"
+2. Meteor must run in production mode with the `--production` flag or else the dynamic import cache will be disabled (it is disabled by default in development mode). Run `meteor --settings settings.json --production` to achieve full offline support.
 
 ### Understanding the Boiler Plate's Architecture
 

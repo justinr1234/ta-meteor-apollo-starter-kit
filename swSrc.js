@@ -1,13 +1,16 @@
-/* global importScripts, workbox, clients */
+/* global importScripts, workbox, clients, localforage */
 /* eslint-disable no-restricted-globals */
 /* eslint-disable quotes */
 /* eslint-disable comma-dangle */
 /* eslint-disable quote-props */
 
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/3.6.2/workbox-sw.js');
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/localforage/1.7.3/localforage.min.js');
 
 const APP_SHELL = '/app-shell';
 const HASHED_CACHE = 'hashedCache';
+
+const GRAPHQL_CACHE_ROUTES = ['intl', 'user'];
 
 // Precache all the files needed by the App Shell, as defined in workbox-config.js
 // If any of these files are updated, run `npm run update-sw` to update this file automatically.
@@ -55,6 +58,89 @@ function hasSameHash(firstUrl, secondUrl) {
 
   return false;
 }
+
+/* eslint-disable */
+function serialize(request) {
+  var headers = {};
+
+  for (var entry of request.headers.entries()) {
+    headers[entry[0]] = entry[1];
+  }
+  var serialized = {
+    url: request.url,
+    headers: headers,
+    method: request.method,
+    mode: request.mode,
+    credentials: request.credentials,
+    cache: request.cache,
+    redirect: request.redirect,
+    referrer: request.referrer
+  };
+
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return request.clone().text().then(function(body) {
+      serialized.body = body;
+      return Promise.resolve(serialized);
+    });
+  }
+  return Promise.resolve(serialized);
+}
+
+function deserialize(data) {
+  return Promise.resolve(new Request(data.url, data));
+}
+
+function serializeResponse(response) {
+  return response.clone().blob().then((bodyBlob) => {
+    var headers = {};
+
+    for (var entry of response.headers.entries()) {
+      headers[entry[0]] = entry[1];
+    }
+
+    var serialized = {
+      headers: headers,
+      status: response.status,
+      statusText: response.statusText,
+      body: bodyBlob
+    };
+
+    return Promise.resolve(serialized);
+  });
+}
+
+function deserializeResponse(data) {
+  return Promise.resolve(new Response(data.body, data));
+}
+/* eslint-enable */
+
+workbox.routing.registerRoute(/graphql/, ({ event }) => event.request.clone().json().then((reqBody) => {
+  if (!reqBody || GRAPHQL_CACHE_ROUTES.includes(reqBody.operationName) === false) {
+    return fetch(event.request);
+  }
+
+  const reqBodyStringified = JSON.stringify(reqBody);
+  return localforage.getItem(`${reqBodyStringified}req`)
+    .then((cachedReq) => fetch(event.request.clone()).then((response) => {
+      const clonedResponse = response.clone();
+
+      if (!clonedResponse || clonedResponse.status !== 200 || clonedResponse.type !== 'basic') {
+        if (cachedReq) {
+          return localforage.getItem(`${reqBodyStringified}res`).then(data => deserializeResponse(data));
+        }
+        return response;
+      }
+
+      // Cache this version
+      localforage.setItem(`${reqBodyStringified}req`, serialize(event.request));
+      localforage.setItem(`${reqBodyStringified}res`, serializeResponse(clonedResponse));
+
+      // Return it
+      return response;
+    })
+      .catch(() => cachedReq && localforage.getItem(`${reqBodyStringified}res`).then(data => deserializeResponse(data)))
+    );
+}), 'POST');
 
 // Use our own cache for all hashed assets (Meteor generates the hashes for us)
 // Old versions of a given URL are replaced when a version with a different hash is
@@ -212,4 +298,11 @@ self.addEventListener('notificationclick', (evt) => {
     .then((notifications) => {
       notifications.forEach((notification) => { notification.close(); });
     });
+});
+
+self.addEventListener('message', (messageEvent) => {
+  if (messageEvent.data === 'skipWaiting') {
+    return self.skipWaiting();
+  }
+  return self;
 });

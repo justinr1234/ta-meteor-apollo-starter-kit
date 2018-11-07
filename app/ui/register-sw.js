@@ -1,10 +1,13 @@
-const updateReady = () => {
+const updateReady = (reg) => {
   // At this point, registration has taken place. The service worker will not
   // handle requests until this page and any other instances of this page
   // (in other tabs, etc.) have been closed/reloaded.
   const ok = confirm('A new version of the app is available, we need to reload the page.'); // eslint-disable-line
   if (ok) {
-    window.location.reload(true);
+    if (reg) {
+      reg.waiting.postMessage('skipWaiting');
+    }
+    setTimeout(() => window.location.reload(true), 1000);
   }
 };
 
@@ -31,7 +34,7 @@ if ('serviceWorker' in navigator) {
       // If there is an updated service worker already waiting, call updateReady().
       if (reg.waiting) {
         console.log('waiting');
-        updateReady();
+        updateReady(reg);
         return;
       }
 
