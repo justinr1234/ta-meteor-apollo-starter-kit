@@ -1,5 +1,8 @@
 import { Meteor } from 'meteor/meteor';
 import { WebApp } from 'meteor/webapp';
+import Post from '../db';
+
+Meteor.publish('posts', () => Post.find());
 
 Meteor.startup(() => {
   console.log('[server] startup');
